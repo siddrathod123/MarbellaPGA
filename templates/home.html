@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="hero">
+  <h2>Marbella Matchplay</h2>
+  <p>Pink vs Purple. Four courses, live scores, questionable bets, and absolutely no gimmes unless witnessed.</p>
+  <div class="hero-grid">
+    <div class="stat"><b>{{ state.players | selectattr('joined') | list | length }}/8</b><span>Players joined</span></div>
+    <div class="stat"><b>{{ state.current_format.split(' ')[0] }}</b><span>Current format</span></div>
+    <div class="stat"><b>{{ team_points.pink or '—' }}</b><span>Pink strokes</span></div>
+    <div class="stat"><b>{{ team_points.purple or '—' }}</b><span>Purple strokes</span></div>
+  </div>
+</section>
+
+<div class="section-title"><h3>Today’s format</h3><small>Change anytime</small></div>
+<form class="card format-banner" method="post" action="{{ url_for('update_format') }}">
+  <select name="format" onchange="this.form.submit()">
+    {% for f in formats %}<option value="{{ f }}" {{ 'selected' if f == state.current_format else '' }}>{{ f }}</option>{% endfor %}
+  </select>
+  <span class="format-badge">Active</span>
+</form>
+
+<div class="section-title"><h3>Marbella courses</h3><small>4 rounds</small></div>
+<div class="stack">
+  {% for c in courses %}
+  <div class="card course-card">
+    <div style="display:flex;gap:12px;align-items:center"><div class="flag">{{ loop.index }}</div><div><h4>{{ c.name }}</h4><p>Par {{ c.holes | sum }} • scorecard ready</p></div></div>
+    <a class="btn secondary" href="{{ url_for('scores', course=c.id) }}">Open</a>
+  </div>
+  {% endfor %}
+</div>
+<form method="post" action="{{ url_for('reset') }}" onsubmit="return confirm('Reset all teams, scores and bets?')" style="margin-top:16px">
+  <button class="btn secondary" type="submit">Reset Trip</button>
+</form>
+{% endblock %}

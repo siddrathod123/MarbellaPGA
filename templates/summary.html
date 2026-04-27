@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="hero"><h2>Live Standings</h2><p>PGA-style trip centre. Lower total leads; empty scores are ignored until entered.</p><div class="hero-grid"><div class="stat"><b>{{ team_points.pink or '—' }}</b><span>Pink total</span></div><div class="stat"><b>{{ team_points.purple or '—' }}</b><span>Purple total</span></div><div class="stat"><b>{{ state.bets | length }}</b><span>Open bets</span></div><div class="stat"><b>{{ state.current_format }}</b><span>Format</span></div></div></section>
+<div class="section-title"><h3>Leaderboard</h3><small>Net strokes (shots minus drinks)</small></div>
+<div class="stack">
+  {% for p in leaderboard %}
+  <div class="card leader"><div class="rank">{{ loop.index }}</div><div><b>{{ p.name }}</b><br><small class="muted">{{ p.team or 'No team' }} • {{ p.played }} holes • gross {{ p.gross or '—' }} • drinks {{ p.drinks or 0 }}</small></div><b>{{ p.total if p.played else '—' }}</b></div>
+  {% endfor %}
+</div>
+{% endblock %}

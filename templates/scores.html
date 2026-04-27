@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="section-title"><h3>Scorecards</h3><small>Hole-by-hole</small></div>
+<div class="tabs">
+  {% for c in courses %}<a class="tab {{ 'active' if c.id == course.id else '' }}" href="{{ url_for('scores', course=c.id, player=score_player) }}">{{ c.name }}</a>{% endfor %}
+</div>
+<form class="card" style="margin-top:10px" method="post" action="{{ url_for('save_scores') }}">
+  <input type="hidden" name="course" value="{{ course.id }}">
+  <div class="form-grid">
+    <label>Player<select name="player" onchange="window.location='{{ url_for('scores', course=course.id) }}&player=' + encodeURIComponent(this.value)">{% for n in names %}<option {{ 'selected' if n == score_player else '' }}>{{ n }}</option>{% endfor %}</select></label>
+    <div class="divider"></div>
+    <div class="score-head drink-score-head"><div>Hole</div><div>Par</div><div>Shot</div><div>Drink</div><div>Net +/-</div></div>
+    <div id="scoreRows">
+      {% for par in course.holes %}
+      {% set i = loop.index0 %}
+      {% set shot = state.scores[course.id][score_player][i] %}
+      {% set drink = state.drinks[course.id][score_player][i] %}
+      {% set net = (shot | int) - (drink | int) if shot else none %}
+      {% set diff = net - par if net is not none else none %}
+      <div class="score-row drink-score-row">
+        <div class="hole">{{ loop.index }}</div>
+        <div class="par">Par {{ par }}</div>
+        <input name="score_{{ i }}" inputmode="numeric" value="{{ shot }}" placeholder="-">
+        <input name="drink_{{ i }}" inputmode="numeric" min="0" value="{{ drink }}" placeholder="0">
+        <div class="par diff">{% if diff is none %}—{% elif diff > 0 %}+{{ diff }}{% else %}{{ diff }}{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="btn" type="submit">Save Scorecard</button>
+  </div>
+</form>
+{% endblock %}

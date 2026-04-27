@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="section-title"><h3>Betting board</h3><small>Track the damage</small></div>
+<div class="card">
+  <form class="form-grid" method="post" action="{{ url_for('add_bet') }}">
+    <label>Players involved<input name="players" placeholder="e.g. James v Nick"></label>
+    <label>The bet<textarea name="text" placeholder="e.g. Lowest net score at Los Arqueros"></textarea></label>
+    <label>Duration<input name="duration" placeholder="One round / whole trip / front 9"></label>
+    <label>Value<input name="value" placeholder="£10 / dinner / round of beers"></label>
+    <button class="btn" type="submit">Log Bet</button>
+  </form>
+</div>
+<div class="section-title"><h3>Open bets</h3><small>{{ state.bets | length }} logged</small></div>
+<div class="stack">
+  {% if state.bets %}
+    {% for b in state.bets %}
+    <div class="card bet"><div class="bet-top"><b>{{ b.players }}</b><span class="value">{{ b.value }}</span></div><span>{{ b.text }}</span><small class="muted">{{ b.duration }}</small><form method="post" action="{{ url_for('remove_bet', index=loop.index0) }}"><button class="btn secondary" type="submit">Settle / Remove</button></form></div>
+    {% endfor %}
+  {% else %}<div class="card muted">No bets yet. Weak.</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,178 +1,218 @@
 import json
-import os
 from pathlib import Path
-from threading import Lock
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, render_template, request, redirect, url_for
 
 app = Flask(__name__)
-DATA_FILE = Path(os.environ.get("DATA_FILE", "game_state.json"))
-lock = Lock()
+DATA_FILE = Path("data.json")
 
-DEFAULT_PLAYERS = ["Elijah", "James", "Ben", "Sam", "Sidd K", "Sidd R", "Nick", "Matt"]
-DEFAULT_STATE = {
-    "game_name": "Marbella Drinking Open",
-    "players": [{"name": name, "group": 1 if i < 4 else 2} for i, name in enumerate(DEFAULT_PLAYERS)],
-    "pars": [4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 5, 3, 4, 4, 4, 5, 3, 4],
-    "scores": {},
-}
+NAMES = ["Elijah", "James", "Ben", "Sam", "Sidd K", "Sidd R", "Nick", "Matt"]
+COURSES = [
+    {"id": "atalaya", "name": "Atalaya New Course", "holes": [4,4,3,5,4,4,3,5,4,4,5,3,4,4,4,5,3,4]},
+    {"id": "dona", "name": "Doña Julia", "holes": [4,5,4,3,4,4,5,3,4,4,4,3,5,4,4,3,5,4]},
+    {"id": "arqueros", "name": "Los Arqueros", "holes": [4,4,3,5,4,4,3,4,5,4,3,4,5,4,4,3,5,4]},
+    {"id": "higueron", "name": "Higuerón", "holes": [4,3,4,5,4,4,3,5,4,4,4,3,5,4,3,4,5,4]},
+]
+FORMATS = ["Singles Matchplay", "Fourball Better Ball", "Alternate Shot", "Scramble", "Stableford", "Skins", "Vegas / Wolf"]
 
 
-def fresh_state():
-    state = json.loads(json.dumps(DEFAULT_STATE))
-    for player in DEFAULT_PLAYERS:
-        state["scores"][player] = [None] * 18
-    return state
+def blank_state():
+    return {
+        "selected_course": "atalaya",
+        "current_format": "Singles Matchplay",
+        "players": [{"name": n, "team": "", "handicap": "", "joined": False} for n in NAMES],
+        "scores": {c["id"]: {n: [""] * 18 for n in NAMES} for c in COURSES},
+        "drinks": {c["id"]: {n: [""] * 18 for n in NAMES} for c in COURSES},
+        "bets": [],
+    }
 
 
 def load_state():
     if DATA_FILE.exists():
         try:
-            with DATA_FILE.open("r", encoding="utf-8") as f:
-                state = json.load(f)
+            state = json.loads(DATA_FILE.read_text())
         except json.JSONDecodeError:
-            state = fresh_state()
+            state = blank_state()
     else:
-        state = fresh_state()
-    return normalise_state(state)
+        state = blank_state()
 
-
-def normalise_state(state):
-    state.setdefault("game_name", "Marbella Drinking Open")
-    state.setdefault("players", [])
-    state.setdefault("pars", [4] * 18)
-    state["pars"] = (state["pars"] + [4] * 18)[:18]
+    # Backward-compatible repair if data.json is missing newer fields.
+    state.setdefault("selected_course", "atalaya")
+    state.setdefault("current_format", "Singles Matchplay")
+    state.setdefault("players", [{"name": n, "team": "", "handicap": "", "joined": False} for n in NAMES])
     state.setdefault("scores", {})
-    for player in state["players"]:
-        name = player.get("name", "").strip()
-        if name and name not in state["scores"]:
-            state["scores"][name] = [None] * 18
-        elif name:
-            state["scores"][name] = (state["scores"].get(name, []) + [None] * 18)[:18]
-    valid_names = {p.get("name", "").strip() for p in state["players"]}
-    state["scores"] = {k: v for k, v in state["scores"].items() if k in valid_names}
+    state.setdefault("drinks", {})
+    state.setdefault("bets", [])
+    for c in COURSES:
+        state["scores"].setdefault(c["id"], {})
+        state["drinks"].setdefault(c["id"], {})
+        for n in NAMES:
+            state["scores"][c["id"]].setdefault(n, [""] * 18)
+            state["drinks"][c["id"]].setdefault(n, [""] * 18)
     return state
 
 
 def save_state(state):
-    with DATA_FILE.open("w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
+    DATA_FILE.write_text(json.dumps(state, indent=2))
 
 
-def score_summary(state):
-    rows = []
+def selected_course_obj(state):
+    return next((c for c in COURSES if c["id"] == state.get("selected_course")), COURSES[0])
+
+
+def number(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def total_for(state, name):
+    total = gross = drinks = played = 0
+    for c in COURSES:
+        course_scores = state["scores"][c["id"]][name]
+        course_drinks = state["drinks"][c["id"]][name]
+        for shot_value, drink_value in zip(course_scores, course_drinks):
+            shots = number(shot_value)
+            if shots:
+                d = number(drink_value)
+                gross += shots
+                drinks += d
+                total += shots - d
+                played += 1
+    return {"total": total, "gross": gross, "drinks": drinks, "played": played}
+
+
+def team_points(state):
+    pink = 0
+    purple = 0
     for player in state["players"]:
-        name = player["name"]
-        holes = state["scores"].get(name, [None] * 18)
-        gross = 0
-        drinks = 0
-        net = 0
-        played = 0
-        versus_par = 0
-        for i, entry in enumerate(holes):
-            if not entry:
-                continue
-            strokes = int(entry.get("strokes") or 0)
-            drink_count = int(entry.get("drinks") or 0)
-            hole_net = strokes - drink_count
-            gross += strokes
-            drinks += drink_count
-            net += hole_net
-            versus_par += hole_net - int(state["pars"][i])
-            played += 1
-        rows.append({
-            "name": name,
-            "group": player.get("group", 1),
-            "gross": gross,
-            "drinks": drinks,
-            "net": net,
-            "played": played,
-            "versus_par": versus_par,
-        })
-    rows.sort(key=lambda r: (r["played"] == 0, r["net"] if r["played"] else 9999, r["gross"]))
-    return rows
+        total = total_for(state, player["name"])["total"]
+        if player.get("team") == "Pink":
+            pink += total
+        elif player.get("team") == "Purple":
+            purple += total
+    return {"pink": pink, "purple": purple}
+
+
+def leaderboard(state):
+    rows = []
+    for n in NAMES:
+        player = next((p for p in state["players"] if p["name"] == n), {"team": ""})
+        totals = total_for(state, n)
+        rows.append({"name": n, "team": player.get("team", ""), **totals})
+    return sorted(rows, key=lambda x: x["total"] if x["played"] else 999999)
+
+
+def common_context(view):
+    state = load_state()
+    return {
+        "state": state,
+        "view": view,
+        "names": NAMES,
+        "courses": COURSES,
+        "formats": FORMATS,
+        "team_points": team_points(state),
+        "leaderboard": leaderboard(state),
+    }
 
 
 @app.route("/")
-def index():
-    return render_template("index.html")
+def home():
+    return render_template("home.html", **common_context("home"))
 
 
-@app.get("/api/state")
-def get_state():
-    with lock:
-        state = load_state()
-        return jsonify({"state": state, "leaderboard": score_summary(state)})
+@app.post("/format")
+def update_format():
+    state = load_state()
+    state["current_format"] = request.form.get("format", state["current_format"])
+    save_state(state)
+    return redirect(url_for("home"))
 
 
-@app.post("/api/settings")
-def update_settings():
-    payload = request.get_json(force=True)
-    with lock:
-        state = load_state()
-        if "game_name" in payload:
-            state["game_name"] = str(payload["game_name"]).strip() or state["game_name"]
-        if "pars" in payload:
-            pars = []
-            for value in payload["pars"][:18]:
-                try:
-                    pars.append(max(3, min(6, int(value))))
-                except (TypeError, ValueError):
-                    pars.append(4)
-            state["pars"] = (pars + [4] * 18)[:18]
-        if "players" in payload:
-            players = []
-            for idx, player in enumerate(payload["players"][:8]):
-                name = str(player.get("name", "")).strip() or f"Player {idx + 1}"
-                group = int(player.get("group", 1))
-                players.append({"name": name, "group": 1 if group == 1 else 2})
-            old_scores = state.get("scores", {})
-            state["players"] = players
-            state["scores"] = {p["name"]: old_scores.get(p["name"], [None] * 18) for p in players}
-        state = normalise_state(state)
+@app.route("/teams")
+def teams():
+    return render_template("teams.html", **common_context("teams"))
+
+
+@app.post("/teams")
+def save_player():
+    state = load_state()
+    name = request.form.get("player")
+    for p in state["players"]:
+        if p["name"] == name:
+            p["team"] = request.form.get("team", "")
+            p["handicap"] = request.form.get("handicap", "")
+            p["joined"] = True
+            break
+    save_state(state)
+    return redirect(url_for("teams"))
+
+
+@app.route("/scores")
+def scores():
+    ctx = common_context("scores")
+    state = ctx["state"]
+    course_id = request.args.get("course") or state.get("selected_course") or COURSES[0]["id"]
+    player = request.args.get("player") or NAMES[0]
+    state["selected_course"] = course_id
+    save_state(state)
+    course = next((c for c in COURSES if c["id"] == course_id), COURSES[0])
+    ctx.update({"course": course, "score_player": player})
+    return render_template("scores.html", **ctx)
+
+
+@app.post("/scores")
+def save_scores():
+    state = load_state()
+    course_id = request.form.get("course") or state.get("selected_course")
+    player = request.form.get("player") or NAMES[0]
+    state["selected_course"] = course_id
+    for i in range(18):
+        state["scores"][course_id][player][i] = request.form.get(f"score_{i}", "")
+        state["drinks"][course_id][player][i] = request.form.get(f"drink_{i}", "")
+    save_state(state)
+    return redirect(url_for("scores", course=course_id, player=player))
+
+
+@app.route("/bets")
+def bets():
+    return render_template("bets.html", **common_context("bets"))
+
+
+@app.post("/bets")
+def add_bet():
+    state = load_state()
+    state["bets"].insert(0, {
+        "players": request.form.get("players") or "Unnamed degenerates",
+        "text": request.form.get("text") or "Mystery bet",
+        "duration": request.form.get("duration") or "Unknown duration",
+        "value": request.form.get("value") or "Pride",
+    })
+    save_state(state)
+    return redirect(url_for("bets"))
+
+
+@app.post("/bets/remove/<int:index>")
+def remove_bet(index):
+    state = load_state()
+    if 0 <= index < len(state["bets"]):
+        state["bets"].pop(index)
         save_state(state)
-        return jsonify({"ok": True, "state": state, "leaderboard": score_summary(state)})
+    return redirect(url_for("bets"))
 
 
-@app.post("/api/score")
-def update_score():
-    payload = request.get_json(force=True)
-    player = str(payload.get("player", "")).strip()
-    hole = int(payload.get("hole", 1))
-    if hole < 1 or hole > 18:
-        return jsonify({"ok": False, "error": "Hole must be 1 to 18"}), 400
-    with lock:
-        state = load_state()
-        if player not in state["scores"]:
-            return jsonify({"ok": False, "error": "Unknown player"}), 400
-        clear = bool(payload.get("clear"))
-        if clear:
-            state["scores"][player][hole - 1] = None
-        else:
-            strokes = max(1, min(20, int(payload.get("strokes", 1))))
-            drinks = max(0, min(20, int(payload.get("drinks", 0))))
-            state["scores"][player][hole - 1] = {"strokes": strokes, "drinks": drinks, "net": strokes - drinks}
-        save_state(state)
-        return jsonify({"ok": True, "state": state, "leaderboard": score_summary(state)})
+@app.route("/summary")
+def summary():
+    return render_template("summary.html", **common_context("summary"))
 
 
-@app.post("/api/reset_scores")
-def reset_scores():
-    with lock:
-        state = load_state()
-        for player in state["players"]:
-            state["scores"][player["name"]] = [None] * 18
-        save_state(state)
-        return jsonify({"ok": True, "state": state, "leaderboard": score_summary(state)})
-
-
-@app.post("/api/reset_all")
-def reset_all():
-    with lock:
-        state = fresh_state()
-        save_state(state)
-        return jsonify({"ok": True, "state": state, "leaderboard": score_summary(state)})
+@app.post("/reset")
+def reset():
+    save_state(blank_state())
+    return redirect(url_for("home"))
 
 
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Marbella Ryder Cup</title>
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Marbella Golf Tour</p>
+        <h1>Ryder Cup Live</h1>
+      </div>
+      <div class="live-pill"><span></span>LIVE</div>
+    </header>
+
+    <main id="app">
+      {% block content %}{% endblock %}
+    </main>
+
+    <nav class="bottom-nav" aria-label="App navigation">
+      <a class="nav-btn {{ 'active' if view == 'home' else '' }}" href="{{ url_for('home') }}"><span>⌂</span>Home</a>
+      <a class="nav-btn {{ 'active' if view == 'teams' else '' }}" href="{{ url_for('teams') }}"><span>◆</span>Teams</a>
+      <a class="nav-btn {{ 'active' if view == 'scores' else '' }}" href="{{ url_for('scores') }}"><span>⛳</span>Scores</a>
+      <a class="nav-btn {{ 'active' if view == 'bets' else '' }}" href="{{ url_for('bets') }}"><span>£</span>Bets</a>
+      <a class="nav-btn {{ 'active' if view == 'summary' else '' }}" href="{{ url_for('summary') }}"><span>🏆</span>Live</a>
+    </nav>
+  </div>
+</body>
+</html>

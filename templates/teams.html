@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="section-title"><h3>Player check-in</h3><small>Choose side</small></div>
+<div class="card">
+  <form class="form-grid" method="post" action="{{ url_for('save_player') }}">
+    <label>Name<select name="player">{% for n in names %}<option>{{ n }}</option>{% endfor %}</select></label>
+    <label>Handicap<input name="handicap" inputmode="decimal" placeholder="e.g. 14.2"></label>
+    <div class="team-toggle">
+      <label class="team-option pink active"><input type="radio" name="team" value="Pink" checked hidden>Pink Team</label>
+      <label class="team-option purple"><input type="radio" name="team" value="Purple" hidden>Purple Team</label>
+    </div>
+    <button class="btn" type="submit">Save Player</button>
+    <p class="tiny">Server-backed Python version: everyone sees the same saved teams after refresh.</p>
+  </form>
+</div>
+
+<div class="section-title"><h3>Team rooms</h3><small>Pink v Purple</small></div>
+<div class="team-board">
+  {% for team in ['Pink', 'Purple'] %}
+  <div class="card team-col">
+    <h3 class="{{ 'pink-text' if team == 'Pink' else 'purple-text' }}">{{ team }}</h3>
+    {% set players = state.players | selectattr('team', 'equalto', team) | list %}
+    {% if players %}
+      {% for p in players %}<div class="player-chip"><span>{{ p.name }}</span><b>{{ p.handicap or '—' }}</b></div>{% endfor %}
+    {% else %}<p class="muted">No players yet</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
