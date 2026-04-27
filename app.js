@@ -14,33 +14,12 @@ let state = JSON.parse(localStorage.getItem(storeKey) || "null") || {
   players:names.map(n=>({name:n, team:"", handicap:"", joined:false})),
   scores:{}, drinks:{}, bets:[], notes:[]
 };
-if(!state.drinks) state.drinks = {};
-courses.forEach(c=>{
-  if(!state.scores[c.id]) state.scores[c.id] = {};
-  if(!state.drinks[c.id]) state.drinks[c.id] = {};
-  names.forEach(n=>{
-    if(!state.scores[c.id][n]) state.scores[c.id][n] = Array(18).fill("");
-    if(!state.drinks[c.id][n]) state.drinks[c.id][n] = Array(18).fill("");
-  });
-});
+courses.forEach(c=>{ if(!state.scores[c.id]) state.scores[c.id] = {}; if(!state.drinks) state.drinks = {}; if(!state.drinks[c.id]) state.drinks[c.id] = {}; names.forEach(n=>{ if(!state.scores[c.id][n]) state.scores[c.id][n] = Array(18).fill(""); if(!state.drinks[c.id][n]) state.drinks[c.id][n] = Array(18).fill(""); }); });
 function save(){ localStorage.setItem(storeKey, JSON.stringify(state)); }
 function toast(msg){ let el = document.querySelector('.toast'); if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el)} el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),1400); }
 function navigate(view){ state.view=view; save(); document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view)); render(); window.scrollTo({top:0,behavior:'smooth'}); }
 document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>navigate(btn.dataset.view)));
-function scoreNet(strokes, drinks){
-  const s = Number(strokes) || 0;
-  const d = Number(drinks) || 0;
-  return s ? s - d : 0;
-}
-function totalFor(name){
-  let gross=0, drinks=0, net=0, played=0;
-  courses.forEach(c=>state.scores[c.id][name].forEach((v,i)=>{
-    const s=Number(v);
-    const d=Number(state.drinks[c.id][name][i]) || 0;
-    if(s){ gross+=s; drinks+=d; net+=scoreNet(s,d); played++; }
-  }));
-  return {total:net, gross, drinks, played};
-}
+function totalFor(name){ let total=0, gross=0, drinks=0, played=0; courses.forEach(c=>state.scores[c.id][name].forEach((v,i)=>{ const x=Number(v); if(x){ const d=Number((state.drinks && state.drinks[c.id] && state.drinks[c.id][name] && state.drinks[c.id][name][i]) || 0); gross+=x; drinks+=d; total+=x-d; played++; }})); return {total, gross, drinks, played}; }
 function teamPoints(){ const pink = state.players.filter(p=>p.team==='Pink').reduce((a,p)=>a+totalFor(p.name).total,0); const purple = state.players.filter(p=>p.team==='Purple').reduce((a,p)=>a+totalFor(p.name).total,0); return {pink,purple}; }
 function render(){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===state.view));
@@ -52,7 +31,7 @@ function render(){
 }
 function home(){
   const tp = teamPoints();
-  app.innerHTML = `<section class="hero"><h2>Marbella Matchplay</h2><p>Pink vs Purple. Four courses, live scores, drink deductions, questionable bets, and absolutely no gimmes unless witnessed.</p><div class="hero-grid"><div class="stat"><b>${state.players.filter(p=>p.joined).length}/8</b><span>Players joined</span></div><div class="stat"><b>${state.currentFormat.split(' ')[0]}</b><span>Current format</span></div><div class="stat"><b>${tp.pink || '—'}</b><span>Pink net</span></div><div class="stat"><b>${tp.purple || '—'}</b><span>Purple net</span></div></div></section>
+  app.innerHTML = `<section class="hero"><h2>Marbella Matchplay</h2><p>Pink vs Purple. Four courses, live scores, questionable bets, and absolutely no gimmes unless witnessed.</p><div class="hero-grid"><div class="stat"><b>${state.players.filter(p=>p.joined).length}/8</b><span>Players joined</span></div><div class="stat"><b>${state.currentFormat.split(' ')[0]}</b><span>Current format</span></div><div class="stat"><b>${tp.pink || '—'}</b><span>Pink strokes</span></div><div class="stat"><b>${tp.purple || '—'}</b><span>Purple strokes</span></div></div></section>
   <div class="section-title"><h3>Today’s format</h3><small>Change anytime</small></div><div class="card format-banner"><select id="formatSelect">${formats.map(f=>`<option ${f===state.currentFormat?'selected':''}>${f}</option>`).join('')}</select><span class="format-badge">Active</span></div>
   <div class="section-title"><h3>Marbella courses</h3><small>4 rounds</small></div><div class="stack">${courses.map((c,i)=>`<div class="card course-card"><div style="display:flex;gap:12px;align-items:center"><div class="flag">${i+1}</div><div><h4>${c.name}</h4><p>Par ${c.holes.reduce((a,b)=>a+b,0)} • scorecard ready</p></div></div><button class="btn secondary" onclick="state.selectedCourse='${c.id}';navigate('scores')">Open</button></div>`).join('')}</div>`;
   $('#formatSelect').addEventListener('change', e=>{state.currentFormat=e.target.value;save();toast('Format updated')});
@@ -65,33 +44,19 @@ function teams(){
 }
 function teamList(team){ const ps=state.players.filter(p=>p.team===team); return ps.length?ps.map(p=>`<div class="player-chip"><span>${p.name}</span><b>${p.handicap || '—'}</b></div>`).join(''):`<p class="muted">No players yet</p>`; }
 function scores(){ const c = courses.find(x=>x.id===state.selectedCourse); const player = state.scorePlayer || names[0]; state.scorePlayer=player;
-  app.innerHTML = `<div class="section-title"><h3>Scorecards</h3><small>Gross minus drinks</small></div><div class="tabs">${courses.map(c=>`<button class="tab ${c.id===state.selectedCourse?'active':''}" data-course="${c.id}">${c.name}</button>`).join('')}</div><div class="card" style="margin-top:10px"><div class="form-grid"><label>Player<select id="scorePlayer">${names.map(n=>`<option ${n===player?'selected':''}>${n}</option>`).join('')}</select></label><p class="tiny">Simple rule: 1 drink removes 1 stroke from that hole’s score.</p><div class="divider"></div><div class="score-head"><div>Hole</div><div>Par</div><div>Shot</div><div>Drink</div><div>Net</div></div><div id="scoreRows">${c.holes.map((par,i)=>row(c,player,i,par)).join('')}</div></div></div>`;
+  app.innerHTML = `<div class="section-title"><h3>Scorecards</h3><small>Hole-by-hole</small></div><div class="tabs">${courses.map(c=>`<button class="tab ${c.id===state.selectedCourse?'active':''}" data-course="${c.id}">${c.name}</button>`).join('')}</div><div class="card" style="margin-top:10px"><div class="form-grid"><label>Player<select id="scorePlayer">${names.map(n=>`<option ${n===player?'selected':''}>${n}</option>`).join('')}</select></label><div class="divider"></div><div class="score-head drink-score-head"><div>Hole</div><div>Par</div><div>Shot</div><div>Drink</div><div>Net +/-</div></div><div id="scoreRows">${c.holes.map((par,i)=>row(c,player,i,par)).join('')}</div></div></div>`;
   document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{state.selectedCourse=t.dataset.course;save();scores()}));
   $('#scorePlayer').addEventListener('change', e=>{state.scorePlayer=e.target.value;save();scores()});
-  document.querySelectorAll('.scoreInput').forEach(inp=>inp.addEventListener('input',e=>{ const i=Number(e.target.dataset.i); state.scores[c.id][player][i]=e.target.value; save(); updateNets(c,player); }));
-  document.querySelectorAll('.drinkInput').forEach(inp=>inp.addEventListener('input',e=>{ const i=Number(e.target.dataset.i); state.drinks[c.id][player][i]=e.target.value; save(); updateNets(c,player); }));
+  document.querySelectorAll('.scoreInput').forEach(inp=>inp.addEventListener('input',e=>{ const i=Number(e.target.dataset.i); state.scores[c.id][player][i]=e.target.value; save(); updateDiffs(c,player); }));
+  document.querySelectorAll('.drinkInput').forEach(inp=>inp.addEventListener('input',e=>{ const i=Number(e.target.dataset.i); state.drinks[c.id][player][i]=e.target.value; save(); updateDiffs(c,player); }));
 }
-function row(c,player,i,par){
-  const v=state.scores[c.id][player][i]||'';
-  const drinks=state.drinks[c.id][player][i]||'';
-  const net=v?scoreNet(v,drinks):'';
-  const vsPar=net!==''?net-par:'';
-  const netText=net===''?'—':`${net} (${vsPar>0?'+'+vsPar:vsPar})`;
-  return `<div class="score-row"><div class="hole">${i+1}</div><div class="par">Par ${par}</div><input class="scoreInput" data-i="${i}" inputmode="numeric" value="${v}" placeholder="-"><input class="drinkInput" data-i="${i}" inputmode="numeric" value="${drinks}" placeholder="0"><div class="par net" data-i="${i}">${netText}</div></div>`;
-}
-function updateNets(c,player){
-  document.querySelectorAll('.net').forEach(el=>{
-    const i=Number(el.dataset.i), s=Number(state.scores[c.id][player][i]), d=Number(state.drinks[c.id][player][i]) || 0;
-    if(!s){ el.textContent='—'; return; }
-    const net=scoreNet(s,d), vsPar=net-c.holes[i];
-    el.textContent=`${net} (${vsPar>0?'+'+vsPar:vsPar})`;
-  });
-}
+function row(c,player,i,par){ const v=state.scores[c.id][player][i]||''; const drink=state.drinks[c.id][player][i]||''; const net=v?Number(v)-Number(drink||0):''; const d=net!==''?net-par:''; return `<div class="score-row drink-score-row"><div class="hole">${i+1}</div><div class="par">Par ${par}</div><input class="scoreInput" data-i="${i}" inputmode="numeric" value="${v}" placeholder="-"><input class="drinkInput" data-i="${i}" inputmode="numeric" min="0" value="${drink}" placeholder="0"><div class="par diff" data-i="${i}">${d===''?'—':d>0?'+'+d:d}</div></div>`; }
+function updateDiffs(c,player){ document.querySelectorAll('.diff').forEach(el=>{const i=Number(el.dataset.i),v=Number(state.scores[c.id][player][i]),d=Number(state.drinks[c.id][player][i]||0),net=v? v-d : 0,rel=net-c.holes[i]; el.textContent=v?(rel>0?'+'+rel:rel):'—';}); }
 function bets(){
  app.innerHTML = `<div class="section-title"><h3>Betting board</h3><small>Track the damage</small></div><div class="card"><div class="form-grid"><label>Players involved<input id="betPlayers" placeholder="e.g. James v Nick"></label><label>The bet<textarea id="betText" placeholder="e.g. Lowest net score at Los Arqueros"></textarea></label><label>Duration<input id="betDuration" placeholder="One round / whole trip / front 9"></label><label>Value<input id="betValue" placeholder="£10 / dinner / round of beers"></label><button class="btn" id="addBet">Log Bet</button></div></div><div class="section-title"><h3>Open bets</h3><small>${state.bets.length} logged</small></div><div class="stack">${state.bets.length?state.bets.map((b,i)=>`<div class="card bet"><div class="bet-top"><b>${b.players}</b><span class="value">${b.value}</span></div><span>${b.text}</span><small class="muted">${b.duration}</small><button class="btn secondary" onclick="state.bets.splice(${i},1);save();bets()">Settle / Remove</button></div>`).join(''):'<div class="card muted">No bets yet. Weak.</div>'}</div>`;
  $('#addBet').addEventListener('click',()=>{state.bets.unshift({players:$('#betPlayers').value||'Unnamed degenerates',text:$('#betText').value||'Mystery bet',duration:$('#betDuration').value||'Unknown duration',value:$('#betValue').value||'Pride'});save();toast('Bet logged');bets();});
 }
 function summary(){ const leaders=names.map(n=>({name:n,...totalFor(n),team:(state.players.find(p=>p.name===n)||{}).team})).sort((a,b)=>(a.total||9999)-(b.total||9999)); const tp=teamPoints();
- app.innerHTML = `<section class="hero"><h2>Live Standings</h2><p>PGA-style trip centre. Lower net total leads; net score is gross strokes minus drinks.</p><div class="hero-grid"><div class="stat"><b>${tp.pink||'—'}</b><span>Pink net</span></div><div class="stat"><b>${tp.purple||'—'}</b><span>Purple net</span></div><div class="stat"><b>${state.bets.length}</b><span>Open bets</span></div><div class="stat"><b>${state.currentFormat}</b><span>Format</span></div></div></section><div class="section-title"><h3>Leaderboard</h3><small>Net score</small></div><div class="stack">${leaders.map((p,i)=>`<div class="card leader"><div class="rank">${i+1}</div><div><b>${p.name}</b><br><small class="muted">${p.team || 'No team'} • ${p.played} holes • ${p.gross || 0} gross • ${p.drinks || 0} drinks</small></div><b>${p.total || '—'}</b></div>`).join('')}</div>`;
+ app.innerHTML = `<section class="hero"><h2>Live Standings</h2><p>PGA-style trip centre. Lower total leads; empty scores are ignored until entered.</p><div class="hero-grid"><div class="stat"><b>${tp.pink||'—'}</b><span>Pink total</span></div><div class="stat"><b>${tp.purple||'—'}</b><span>Purple total</span></div><div class="stat"><b>${state.bets.length}</b><span>Open bets</span></div><div class="stat"><b>${state.currentFormat}</b><span>Format</span></div></div></section><div class="section-title"><h3>Leaderboard</h3><small>Net strokes (shots minus drinks)</small></div><div class="stack">${leaders.map((p,i)=>`<div class="card leader"><div class="rank">${i+1}</div><div><b>${p.name}</b><br><small class="muted">${p.team || 'No team'} • ${p.played} holes • gross ${p.gross || '—'} • drinks ${p.drinks || 0}</small></div><b>${p.total || '—'}</b></div>`).join('')}</div>`;
 }
 render();
